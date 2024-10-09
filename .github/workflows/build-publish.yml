@@ -1,0 +1,107 @@
+name: Build and Push Image to ECR
+
+on:
+  push:
+    branches:
+      - dev
+
+env:
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  AWS_REGION: ${{ github.event.inputs.region || 'us-east-1' }}
+  AWS_DOMAIN: ${{ github.event.inputs.domain || 'artifacts' }} 
+  AWS_REPO: ${{ github.event.inputs.repo || 'Artifacts' }}
+  IMAGE: postgressql-server
+  VERSION: latest
+
+jobs:
+  build:
+    name: Build
+    runs-on: ${{ vars.RUNNER }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Get AWS AUTH TOKEN
+        run: |
+          echo "POETRY_HTTP_BASIC_ARTIFACTS_USERNAME=aws" >> $GITHUB_ENV
+          echo "POETRY_HTTP_BASIC_ARTIFACTS_PASSWORD=$(aws codeartifact get-authorization-token \
+            --domain ${{ env.AWS_DOMAIN }} \
+            --domain-owner ${{ env.AWS_ACCOUNT_ID }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'authorizationToken' \
+            --output text)" >> $GITHUB_ENV
+      
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.11"
+    
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Configure Poetry
+        run: |
+          poetry config http-basic.Artifacts ${{ env.POETRY_HTTP_BASIC_ARTIFACTS_USERNAME }} ${{ env.POETRY_HTTP_BASIC_ARTIFACTS_PASSWORD }}
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ env.IMAGE }} .
+      
+      - name: List Images
+        run: |
+          docker images
+      
+      - name: Save Docker image as artifact
+        run: |
+          docker save ${{ env.IMAGE }}:${{ env.VERSION }} -o ${{ env.IMAGE }}.tar
+  
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.IMAGE }}
+          path: ${{ env.IMAGE }}.tar
+
+  publish:
+    needs: build
+    name: Publish
+    runs-on: ${{ vars.RUNNER }}
+    steps:
+
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.IMAGE }}
+          path: .
+
+      - name: Load Docker image from artifact
+        run: |
+          docker load -i ${{ env.IMAGE }}.tar
+
+      - name: Log in to Amazon ECR
+        run: |
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: List Images
+        run: |
+          docker images
+      
+      - name: Tag Docker Image
+        run: |
+          docker tag ${{ env.IMAGE }}:${{ env.VERSION }} ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.IMAGE }}:${{ env.VERSION }}
+      
+      - name: Push Docker image to ECR
+        run: |
+          docker push ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.IMAGE }}:${{ env.VERSION }}
+           
+      
+
+
