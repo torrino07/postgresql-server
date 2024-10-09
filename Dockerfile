@@ -1,6 +1,10 @@
-FROM mcr.microsoft.com/mssql/server:2022-latest
+FROM postgres
 
-ARG SA_PASSWOR
-ENV SA_PASSWORD="${SA_PASSWOR}"
+ENV POSTGRES_DB="trading"
+ENV POSTGRES_USER="postgres"
+ENV POSTGRES_PASSWORD="admingres"
+ENV PGDATA="/data/postgresql"
 
-EXPOSE 1433
+COPY sql/*/*.sql /docker-entrypoint-initdb.d/
+
+EXPOSE 5432
