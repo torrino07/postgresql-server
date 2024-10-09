@@ -34,18 +34,6 @@ jobs:
             --query 'authorizationToken' \
             --output text)" >> $GITHUB_ENV
       
-      - name: Set up Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: "3.11"
-    
-      - name: Install Poetry
-        run: pip install poetry
-
-      - name: Configure Poetry
-        run: |
-          poetry config http-basic.Artifacts ${{ env.POETRY_HTTP_BASIC_ARTIFACTS_USERNAME }} ${{ env.POETRY_HTTP_BASIC_ARTIFACTS_PASSWORD }}
-      
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
