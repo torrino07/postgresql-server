@@ -3,6 +3,7 @@ USER="torrino07"
 export IMAGE="postgressql-server"
 export VERSION="latest"
 
+
 docker build -t "$IMAGE" .
 
 docker tag "$IMAGE":"$VERSION" "$USER"/"$IMAGE":"$VERSION"
