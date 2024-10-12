@@ -12,6 +12,8 @@ env:
   AWS_REGION: ${{ github.event.inputs.region || 'us-east-1' }}
   AWS_DOMAIN: ${{ github.event.inputs.domain || 'artifacts' }} 
   AWS_REPO: ${{ github.event.inputs.repo || 'Artifacts' }}
+  POSTGRES_DB: trading
+  POSTGRES_HOST_AUTH_METHOD: trust
   IMAGE: postgressql-server
   VERSION: latest
 
@@ -39,7 +41,10 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -t ${{ env.IMAGE }} .
+          docker build \
+            --build-args ${{ env.POSTGRES_DB }} \
+            --build-args ${{ env.POSTGRES_HOST_AUTH_METHOD }} \
+            -t ${{ env.IMAGE }} .
       
       - name: List Images
         run: |

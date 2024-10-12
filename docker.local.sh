@@ -2,10 +2,15 @@ DOMAINOWNER="160945804984"
 REGION="us-east-1"
 USER="torrino07"
 
-export IMAGE="postgressql-server"
-export VERSION="latest"
+POSTGRES_DB="trading"
+POSTGRES_HOST_AUTH_METHOD="trust"
+IMAGE="postgressql-server"
+VERSION="latest"
 
-docker build -t "$IMAGE" .
+docker build \
+    --build-args "$POSTGRES_DB" \
+    --build-args "$POSTGRES_HOST_AUTH_METHOD" \
+    -t "$IMAGE" .
 
 docker tag "$IMAGE":"$VERSION" "$USER"/"$IMAGE":"$VERSION"
 docker push "$USER"/"$IMAGE":"$VERSION"
