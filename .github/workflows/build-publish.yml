@@ -42,8 +42,8 @@ jobs:
       - name: Build Docker image
         run: |
           docker build \
-            --build-args ${{ env.POSTGRES_DB }} \
-            --build-args ${{ env.POSTGRES_HOST_AUTH_METHOD }} \
+            --build-args POSTGRES_DB=${{ env.POSTGRES_DB }} \
+            --build-args POSTGRES_HOST_AUTH_METHOD=${{ env.POSTGRES_HOST_AUTH_METHOD }} \
             -t ${{ env.IMAGE }} .
       
       - name: List Images
