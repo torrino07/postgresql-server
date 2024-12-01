@@ -17,6 +17,8 @@ on:
         type: choice
         options:
           - us-east-1
+  repository_dispatch:
+    types: [infra-ready]
 
 env:
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -36,8 +38,10 @@ jobs:
     runs-on: ${{ vars.RUNNER }}
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.client_payload.branch }}
 
       - name: Lint code
         run: echo "lint"
@@ -114,6 +118,17 @@ jobs:
         run: |
           docker push ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.IMAGE }}:${{ env.VERSION }}
            
-      
-
-
+  dispatch:
+    needs: cd
+    strategy:
+      matrix:
+        repo: [torrino07/kubernetes]
+    runs-on: ${{ vars.RUNNER }}
+    steps:
+      - name: Repository Dispatch
+        run: |
+          curl -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.PAT }}" \
+            https://api.github.com/repos/${{ matrix.repo }}/dispatches \
+            -d '{"event_type":"mssql-server-ready", "client_payload": {"branch": "${{ github.head_ref || github.ref_name }}"}}'
