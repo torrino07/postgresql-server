@@ -5,20 +5,25 @@ on:
     branches:
       - dev
       - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
-      action:
-        description: 'Choose action'
+      region:
+        description: 'Target region'
         required: true
-        default: 'run'
+        default: 'us-east-1'
         type: choice
         options:
-          - run
+          - us-east-1
+  repository_dispatch:
+    types: [infra-ready]
 
 env:
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  AWS_ACCOUNT_ID: ${{ github.ref_name == 'main' && github.event_name == 'pull_request' && secrets.AWS_ACCOUNT_ID_STAGING || github.ref_name == 'main' && secrets.AWS_ACCOUNT_ID_PROD || secrets.AWS_ACCOUNT_ID_DEV }}
   AWS_REGION: ${{ github.event.inputs.region || 'us-east-1' }}
   AWS_DOMAIN: ${{ github.event.inputs.domain || 'artifacts' }} 
   AWS_REPO: ${{ github.event.inputs.repo || 'Artifacts' }}
@@ -28,14 +33,21 @@ env:
   VERSION: latest
 
 jobs:
-  build:
-    name: Build
+  ci:
+    name: ci
     runs-on: ${{ vars.RUNNER }}
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.client_payload.branch }}
+
+      - name: Lint code
+        run: echo "lint"
+
+      - name: Test code
+        run: echo "test"
 
       - name: Get AWS AUTH TOKEN
         run: |
@@ -71,14 +83,12 @@ jobs:
           name: ${{ env.IMAGE }}
           path: ${{ env.IMAGE }}.tar
 
-  publish:
-    needs: build
-    name: Publish
+  cd:
+    needs: ci
+    name: cd
     runs-on: ${{ vars.RUNNER }}
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     
     steps:
-
       - name: Download Docker image artifact
         uses: actions/download-artifact@v4
         with:
@@ -108,6 +118,17 @@ jobs:
         run: |
           docker push ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.IMAGE }}:${{ env.VERSION }}
            
-      
-
-
+  dispatch:
+    needs: cd
+    strategy:
+      matrix:
+        repo: [torrino07/kubernetes]
+    runs-on: ${{ vars.RUNNER }}
+    steps:
+      - name: Repository Dispatch
+        run: |
+          curl -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.PAT }}" \
+            https://api.github.com/repos/${{ matrix.repo }}/dispatches \
+            -d '{"event_type":"mssql-server-ready", "client_payload": {"branch": "${{ github.head_ref || github.ref_name }}"}}'
