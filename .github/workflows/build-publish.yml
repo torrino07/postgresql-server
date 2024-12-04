@@ -1,13 +1,12 @@
 name: Build and Push Image to ECR
 
 on:
-  push:
+  pull_request:
     branches:
       - dev
       - main
-  pull_request:
-    branches:
-      - main
+    types:
+      - opened
   workflow_dispatch:
     inputs:
       region:
@@ -17,31 +16,50 @@ on:
         type: choice
         options:
           - us-east-1
-  repository_dispatch:
-    types: [infra-ready]
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
 
 env:
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   AWS_ACCOUNT_ID: ${{ github.ref_name == 'main' && github.event_name == 'pull_request' && secrets.AWS_ACCOUNT_ID_STAGING || github.ref_name == 'main' && secrets.AWS_ACCOUNT_ID_PROD || secrets.AWS_ACCOUNT_ID_DEV }}
-  AWS_REGION: ${{ github.event.inputs.region || 'us-east-1' }}
-  AWS_DOMAIN: ${{ github.event.inputs.domain || 'artifacts' }} 
-  AWS_REPO: ${{ github.event.inputs.repo || 'Artifacts' }}
-  POSTGRES_DB: trading
-  POSTGRES_HOST_AUTH_METHOD: trust
+  AWS_REGION: ${{ github.event.inputs.region }}
+  AWS_DOMAIN: artifacts
+  AWS_REPO: Artifacts
   IMAGE: postgresql-server
   VERSION: latest
+  POSTGRES_DB: trading
+  POSTGRES_HOST_AUTH_METHOD: trust
 
 jobs:
+  validate-environment:
+    name: Validate Environment
+    runs-on: ${{ vars.RUNNER }}
+    if: >
+      (github.ref_name == 'dev' && github.event.inputs.environment == 'dev') ||
+      (github.ref_name == 'main' && (github.event.inputs.environment == 'staging' || github.event.inputs.environment == 'production'))
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      
+      - name: Validating Environment
+        run: echo "Validating ${{ env.ENVIRONMENT }} environment from ${{ github.ref_name }} branch"
+
   ci:
     name: ci
+    needs: validate-environment
     runs-on: ${{ vars.RUNNER }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
-        with:
-          ref: ${{ github.event.client_payload.branch }}
 
       - name: Lint code
         run: echo "lint"
@@ -117,18 +135,3 @@ jobs:
       - name: Push Docker image to ECR
         run: |
           docker push ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.IMAGE }}:${{ env.VERSION }}
-           
-  dispatch:
-    needs: cd
-    strategy:
-      matrix:
-        repo: [torrino07/kubernetes]
-    runs-on: ${{ vars.RUNNER }}
-    steps:
-      - name: Repository Dispatch
-        run: |
-          curl -X POST \
-            -H "Accept: application/vnd.github.v3+json" \
-            -H "Authorization: token ${{ secrets.PAT }}" \
-            https://api.github.com/repos/${{ matrix.repo }}/dispatches \
-            -d '{"event_type":"mssql-server-ready", "client_payload": {"branch": "${{ github.head_ref || github.ref_name }}"}}'
