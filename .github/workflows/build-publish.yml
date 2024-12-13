@@ -1,4 +1,4 @@
-name: Build and Push Image to ECR
+name: CI/CD Release Pipeline
 
 on:
   push:
@@ -7,30 +7,17 @@ on:
       - main
   pull_request:
     branches:
+      - dev
       - main
-  workflow_dispatch:
-    inputs:
-      region:
-        description: 'Target region'
-        required: true
-        default: 'us-east-1'
-        type: choice
-        options:
-          - us-east-1
-  repository_dispatch:
-    types: [infra-ready]
 
 env:
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  AWS_ACCOUNT_ID: ${{ github.ref_name == 'main' && github.event_name == 'pull_request' && secrets.AWS_ACCOUNT_ID_STAGING || github.ref_name == 'main' && secrets.AWS_ACCOUNT_ID_PROD || secrets.AWS_ACCOUNT_ID_DEV }}
-  AWS_REGION: ${{ github.event.inputs.region || 'us-east-1' }}
-  AWS_DOMAIN: ${{ github.event.inputs.domain || 'artifacts' }} 
-  AWS_REPO: ${{ github.event.inputs.repo || 'Artifacts' }}
-  POSTGRES_DB: trading
-  POSTGRES_HOST_AUTH_METHOD: trust
+  AWS_ACCOUNT_ID: ${{ github.event.inputs.environment == 'dev' && secrets.AWS_ACCOUNT_ID_DEV || github.event.inputs.environment == 'staging' && secrets.AWS_ACCOUNT_ID_STAGING  || secrets.AWS_ACCOUNT_ID_PROD }}
+  AWS_REGION: ${{ github.event.inputs.region }}
+  AWS_DOMAIN: artifacts
+  AWS_REPO: Artifacts
   IMAGE: postgresql-server
-  VERSION: latest
 
 jobs:
   ci:
@@ -40,43 +27,33 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
-        with:
-          ref: ${{ github.event.client_payload.branch }}
 
       - name: Lint code
         run: echo "lint"
 
       - name: Test code
         run: echo "test"
-
-      - name: Get AWS AUTH TOKEN
-        run: |
-          echo "POETRY_HTTP_BASIC_ARTIFACTS_USERNAME=aws" >> $GITHUB_ENV
-          echo "POETRY_HTTP_BASIC_ARTIFACTS_PASSWORD=$(aws codeartifact get-authorization-token \
-            --domain ${{ env.AWS_DOMAIN }} \
-            --domain-owner ${{ env.AWS_ACCOUNT_ID }} \
-            --region ${{ env.AWS_REGION }} \
-            --query 'authorizationToken' \
-            --output text)" >> $GITHUB_ENV
       
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.11"
+    
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
       - name: Build Docker image
         run: |
-          docker build \
-            --build-arg POSTGRES_DB=${{ env.POSTGRES_DB }} \
-            --build-arg POSTGRES_HOST_AUTH_METHOD=${{ env.POSTGRES_HOST_AUTH_METHOD }} \
-            -t ${{ env.IMAGE }} .
+          docker build -t ${{ env.IMAGE }}:latest .
       
       - name: List Images
         run: |
           docker images
-      
+        
       - name: Save Docker image as artifact
         run: |
-          docker save ${{ env.IMAGE }}:${{ env.VERSION }} -o ${{ env.IMAGE }}.tar
-  
+          docker save ${{ env.IMAGE }}:latest -o ${{ env.IMAGE }}.tar
+    
       - name: Upload Docker image artifact
         uses: actions/upload-artifact@v4
         with:
@@ -84,51 +61,118 @@ jobs:
           path: ${{ env.IMAGE }}.tar
 
   cd:
-    needs: ci
     name: cd
+    if: ${{ github.ref_name == 'dev' || github.ref_name == 'main'}}
+    needs: ci
     runs-on: ${{ vars.RUNNER }}
-    
+
     steps:
-      - name: Download Docker image artifact
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+      
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.11"
+
+      - name: Get commits since last tag
+        id: get_commits
+        run: |
+          # Determine the last tag, if none found, assume initial version
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            # No previous tags, consider all history
+            COMMITS=$(git log --pretty=format:"%s")
+          else
+            COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"%s")
+          fi
+          echo "commits<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Determine new version
+        id: determine_version
+        run: |
+          MAJOR_PATTERN='BREAKING'
+          MINOR_PATTERN='feat'
+          PATCH_PATTERN='fix'
+          
+          COMMITS="${{ steps.get_commits.outputs.commits }}"
+          
+          BUMP_TYPE="patch" # default
+          if echo "$COMMITS" | grep -Eq "$MAJOR_PATTERN"; then
+            BUMP_TYPE="major"
+          elif echo "$COMMITS" | grep -Eq "$MINOR_PATTERN"; then
+            BUMP_TYPE="minor"
+          fi
+
+          echo "Bump type: $BUMP_TYPE"
+          
+          VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          VERSION_NUM=${VERSION#v}
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION_NUM"
+          
+          if [ "$BUMP_TYPE" == "major" ]; then
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+          elif [ "$BUMP_TYPE" == "minor" ]; then
+            MINOR=$((MINOR + 1))
+            PATCH=0
+          else
+            PATCH=$((PATCH + 1))
+          fi
+
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "new_version=${NEW_VERSION}" >> $GITHUB_OUTPUT
+          
+          # If we're on dev, create a pre-release version (beta)
+          if [ "${GITHUB_REF_NAME}" = "dev" ]; then
+            PRE_RELEASE_VERSION="${NEW_VERSION}-beta.${GITHUB_RUN_NUMBER}"
+            echo "pre_release_version=${PRE_RELEASE_VERSION}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Push tag
+        if: ${{ github.ref_name == 'main' }}
+        run: |
+          NEW_VERSION="${{ steps.determine_version.outputs.new_version }}"
+          git tag "v${NEW_VERSION}"
+          git push origin "v${NEW_VERSION}"
+  
+      - name: Download Docker Image Artifact
         uses: actions/download-artifact@v4
         with:
           name: ${{ env.IMAGE }}
           path: .
-
-      - name: Load Docker image from artifact
+          
+      - name: Tag Docker Image with Release Version
         run: |
           docker load -i ${{ env.IMAGE }}.tar
 
-      - name: Log in to Amazon ECR
-        run: |
-          aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            docker tag ${{ env.IMAGE }}:latest ghcr.io/${{ github.actor }}/${{ env.IMAGE }}:v${{ steps.determine_version.outputs.new_version }}
+          else
+            docker tag ${{ env.IMAGE }}:latest ghcr.io/${{ github.actor }}/${{ env.IMAGE }}:v${{ steps.determine_version.outputs.pre_release_version }}
+          fi
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       
       - name: List Images
+        run: docker images
+
+      - name: Push Docker image
         run: |
-          docker images
-      
-      - name: Tag Docker Image
-        run: |
-          docker tag ${{ env.IMAGE }}:${{ env.VERSION }} ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.IMAGE }}:${{ env.VERSION }}
-      
-      - name: Push Docker image to ECR
-        run: |
-          docker push ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.IMAGE }}:${{ env.VERSION }}
-           
-  dispatch:
-    needs: cd
-    strategy:
-      matrix:
-        repo: [torrino07/kubernetes]
-    runs-on: ${{ vars.RUNNER }}
-    steps:
-      - name: Repository Dispatch
-        run: |
-          curl -X POST \
-            -H "Accept: application/vnd.github.v3+json" \
-            -H "Authorization: token ${{ secrets.PAT }}" \
-            https://api.github.com/repos/${{ matrix.repo }}/dispatches \
-            -d '{"event_type":"mssql-server-ready", "client_payload": {"branch": "${{ github.head_ref || github.ref_name }}"}}'
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            docker push ghcr.io/${{ github.actor }}/${{ env.IMAGE }}:v${{ steps.determine_version.outputs.new_version }}
+          else
+            docker push ghcr.io/${{ github.actor }}/${{ env.IMAGE }}:v${{ steps.determine_version.outputs.pre_release_version }}
+          fi
