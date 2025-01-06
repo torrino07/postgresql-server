@@ -1,4 +1,4 @@
-CREATE TABLE bots.SocketParameters
+CREATE TABLE bots.Sockets
 (
     ID SERIAL PRIMARY KEY,
     Host VARCHAR(50) NOT NULL,
@@ -7,5 +7,6 @@ CREATE TABLE bots.SocketParameters
     Handshake VARCHAR(50),
     Topic VARCHAR(50) NOT NULL,
     ClientType VARCHAR(50) NOT NULL,
+    State VARCHAR(50) NOT NULL,
     CreatedAt TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP(3)
 );
