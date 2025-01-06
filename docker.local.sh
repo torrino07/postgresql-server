@@ -14,4 +14,3 @@ docker build \
 
 docker tag "$IMAGE":"$VERSION" "$USER"/"$IMAGE":"$VERSION"
 docker push "$USER"/"$IMAGE":"$VERSION"
-# docker run -p 5432:5432 torrino07/postgressql-server:latest
