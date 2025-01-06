@@ -5,7 +5,7 @@ CREATE TABLE bots.SocketParameters
     Port INT NOT NULL,
     Request JSONB NOT NULL, 
     Handshake VARCHAR(50),
-    Channel VARCHAR(50) NOT NULL,
     Topic VARCHAR(50) NOT NULL,
+    ClientType VARCHAR(50) NOT NULL,
     CreatedAt TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP(3)
 );
