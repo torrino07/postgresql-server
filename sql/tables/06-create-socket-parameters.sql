@@ -5,5 +5,5 @@ CREATE TABLE bots.SocketParameters
     Request JSONB NOT NULL, 
     Handshake VARCHAR(50),
     Channel VARCHAR(50) NOT NULL,
-    TypeMemory VARCHAR(50) NOT NULL, 
+    Type VARCHAR(50) NOT NULL, 
 );
