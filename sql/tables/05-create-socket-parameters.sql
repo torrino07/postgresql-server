@@ -9,6 +9,7 @@ CREATE TABLE bots.Sockets
     ClientType VARCHAR(50) NOT NULL,
     Pid INT NOT NULL,
     InstanceId VARCHAR(50) NOT NULL,
+    CommandId VARCHAR(50) NOT NULL,
     Region VARCHAR(50) NOT NULL,
     Environment VARCHAR(50) NOT NULL,
     ProcessState VARCHAR(50) NOT NULL,
