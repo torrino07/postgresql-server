@@ -12,6 +12,6 @@ CREATE TABLE bots.Sockets
     CommandId VARCHAR(50) NOT NULL,
     Region VARCHAR(50) NOT NULL,
     Environment VARCHAR(50) NOT NULL,
-    State VARCHAR(50) NOT NULL,
+    ProcessStatus VARCHAR(50) NOT NULL,
     CreatedAt TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP(3)
 );
