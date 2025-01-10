@@ -1,0 +1,17 @@
+CREATE TABLE bots.Sockets
+(
+    ID SERIAL PRIMARY KEY,
+    Host VARCHAR(50) NOT NULL,
+    Port INT NOT NULL,
+    Request JSONB NOT NULL, 
+    Handshake VARCHAR(50),
+    Topic VARCHAR(50) NOT NULL,
+    ClientType VARCHAR(50) NOT NULL,
+    ClientHost VARCHAR(50) NOT NULL,
+    ClientPort VARCHAR(50) NOT NULL,
+    Pid INT NOT NULL,
+    Region VARCHAR(50) NOT NULL,
+    Environment VARCHAR(50) NOT NULL,
+    ProcessStatus VARCHAR(50) NOT NULL,
+    CreatedAt TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP(3)
+);
