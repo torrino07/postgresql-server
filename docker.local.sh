@@ -2,8 +2,8 @@ DOMAINOWNER="160945804984"
 REGION="us-east-1"
 USER="torrino07"
 
-export IMAGE="postgresql_server"
-export VERSION="latest"
+IMAGE="postgresql-server"
+VERSION="latest"
 
 docker build -t "$IMAGE" .
 
