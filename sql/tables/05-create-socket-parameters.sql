@@ -7,6 +7,8 @@ CREATE TABLE bots.Sockets
     Handshake VARCHAR(50),
     Topic VARCHAR(50) NOT NULL,
     ClientType VARCHAR(50) NOT NULL,
+    ClientHost VARCHAR(50) NOT NULL,
+    ClientPort VARCHAR(50) NOT NULL,
     Pid INT NOT NULL,
     Region VARCHAR(50) NOT NULL,
     Environment VARCHAR(50) NOT NULL,
