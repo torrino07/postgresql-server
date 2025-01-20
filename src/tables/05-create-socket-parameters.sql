@@ -5,6 +5,8 @@ CREATE TABLE bots.Sockets
     Port INT NOT NULL,
     Request JSONB NOT NULL, 
     Handshake VARCHAR(50),
+    Exchange VARCHAR(50) NOT NULL,
+    Market VARCHAR(50) NOT NULL,
     Topic VARCHAR(50) NOT NULL,
     ClientType VARCHAR(50) NOT NULL,
     ClientHost VARCHAR(50) NOT NULL,
