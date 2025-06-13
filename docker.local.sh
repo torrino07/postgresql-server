@@ -1,7 +1,3 @@
-DOMAINOWNER="160945804984"
-REGION="us-east-1"
-USER="torrino07"
-
 IMAGE="postgresql-server"
 VERSION="latest"
 
